@@ -1,10 +1,13 @@
+from contextlib import asynccontextmanager
 import logging
 import sys
 
 from fastapi import FastAPI
 
+from app.api.routes.family import router as family_router
 from app.api.routes.voice import router as voice_router
 from app.core.config import get_settings
+from app.db.session import init_db
 
 
 def configure_logging() -> None:
@@ -20,10 +23,20 @@ def configure_logging() -> None:
 configure_logging()
 settings = get_settings()
 
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """Initialize local SQLite tables when the API server starts."""
+
+    init_db(settings)
+    yield
+
+
 app = FastAPI(
     title=settings.app_name,
     version="0.1.0",
     description="VoiceKin AI model based speaker verification API server.",
+    lifespan=lifespan,
 )
 
 
@@ -35,3 +48,4 @@ async def health() -> dict[str, str]:
 
 
 app.include_router(voice_router, prefix=settings.api_v1_prefix)
+app.include_router(family_router, prefix=settings.api_v1_prefix)

@@ -31,3 +31,38 @@ class VoiceCompareResponse(BaseModel):
         description="Pretrained speaker verification model name.",
         examples=["speechbrain/spkrec-ecapa-voxceleb"],
     )
+
+
+class FamilyCandidateResponse(BaseModel):
+    """Similarity result for one registered family voiceprint."""
+
+    family_id: int = Field(..., examples=[1])
+    name: str = Field(..., examples=["엄마"])
+    relation: str = Field(..., examples=["mother"])
+    similarity: float = Field(..., examples=[0.86])
+
+
+class VerifyFamilyResponse(BaseModel):
+    """Response for comparing one call voice against all registered family voices."""
+
+    model_config = ConfigDict(protected_namespaces=())
+
+    is_registered_family: bool = Field(
+        ...,
+        description="True when the best match similarity is greater than or equal to threshold.",
+        examples=[True],
+    )
+    best_match: FamilyCandidateResponse | None = Field(
+        default=None,
+        description="Most similar registered family member. Null when no family member exists.",
+    )
+    threshold: float = Field(..., examples=[0.75])
+    candidates: list[FamilyCandidateResponse]
+    message: str = Field(
+        ...,
+        examples=["registered_family_matched"],
+    )
+    model_name: str = Field(
+        ...,
+        examples=["speechbrain/spkrec-ecapa-voxceleb"],
+    )

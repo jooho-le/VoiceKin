@@ -93,12 +93,7 @@ class SpeakerVerificationService:
         embedding_1 = self.extract_embedding(audio_file_1)
         embedding_2 = self.extract_embedding(audio_file_2)
 
-        similarity = self.torch.nn.functional.cosine_similarity(
-            embedding_1.unsqueeze(0),
-            embedding_2.unsqueeze(0),
-            dim=1,
-        ).item()
-        similarity = round(float(similarity), 4)
+        similarity = self.compare_embeddings(embedding_1, embedding_2)
 
         is_same_speaker = similarity >= self.threshold
         message = "same_speaker" if is_same_speaker else "different_speaker"
@@ -110,6 +105,16 @@ class SpeakerVerificationService:
             message=message,
             model_name=self.model_name,
         )
+
+    def compare_embeddings(self, embedding_1: Any, embedding_2: Any) -> float:
+        """Return cosine similarity for two speaker embeddings."""
+
+        similarity = self.torch.nn.functional.cosine_similarity(
+            embedding_1.flatten().unsqueeze(0),
+            embedding_2.flatten().unsqueeze(0),
+            dim=1,
+        ).item()
+        return round(float(similarity), 4)
 
     def extract_embedding(self, audio_path: Path) -> Any:
         """Load a wav file and return a normalized speaker embedding tensor."""

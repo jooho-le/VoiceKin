@@ -21,6 +21,7 @@ class Settings:
     # SpeechBrain ECAPA-TDNN model published on Hugging Face.
     speaker_model_name: str = "speechbrain/spkrec-ecapa-voxceleb"
     speaker_model_dir: Path = Path("pretrained_models/spkrec-ecapa-voxceleb")
+    database_path: Path = Path("data/voicekin.sqlite3")
 
     # Tune this value with real VoiceKin validation data later.
     speaker_threshold: float = 0.75
@@ -107,6 +108,13 @@ def get_settings() -> Settings:
             _get_env(
                 "VOICEKIN_SPEAKER_MODEL_DIR",
                 "pretrained_models/spkrec-ecapa-voxceleb",
+                dotenv_values,
+            )
+        ),
+        database_path=Path(
+            _get_env(
+                "VOICEKIN_DATABASE_PATH",
+                "data/voicekin.sqlite3",
                 dotenv_values,
             )
         ),
