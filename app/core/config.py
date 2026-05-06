@@ -23,6 +23,22 @@ class Settings:
     speaker_model_dir: Path = Path("pretrained_models/spkrec-ecapa-voxceleb")
     database_path: Path = Path("data/voicekin.sqlite3")
 
+    # Hugging Face audio classification model for real/spoof voice detection.
+    anti_spoofing_model_name: str = "Vansh180/deepfake-audio-wav2vec2"
+    anti_spoofing_model_dir: Path = Path("pretrained_models/deepfake-audio-wav2vec2")
+    anti_spoofing_threshold: float = 0.07
+    anti_spoofing_spoof_labels: Tuple[str, ...] = (
+        "spoof",
+        "fake",
+        "deepfake",
+        "synthetic",
+        "generated",
+        "label_1",
+    )
+    anti_spoofing_max_audio_seconds: float = 60.0
+    anti_spoofing_window_seconds: float = 5.0
+    anti_spoofing_hop_seconds: float = 2.5
+
     # Tune this value with real VoiceKin validation data later.
     speaker_threshold: float = 0.75
 
@@ -37,6 +53,18 @@ class Settings:
     def __post_init__(self) -> None:
         if not -1.0 <= self.speaker_threshold <= 1.0:
             raise ValueError("VOICEKIN_SPEAKER_THRESHOLD must be between -1.0 and 1.0")
+        if not 0.0 <= self.anti_spoofing_threshold <= 1.0:
+            raise ValueError("VOICEKIN_ANTI_SPOOFING_THRESHOLD must be between 0.0 and 1.0")
+        if self.anti_spoofing_max_audio_seconds < 1.0:
+            raise ValueError(
+                "VOICEKIN_ANTI_SPOOFING_MAX_AUDIO_SECONDS must be greater than or equal to 1.0"
+            )
+        if self.anti_spoofing_window_seconds < 1.0:
+            raise ValueError(
+                "VOICEKIN_ANTI_SPOOFING_WINDOW_SECONDS must be greater than or equal to 1.0"
+            )
+        if self.anti_spoofing_hop_seconds <= 0:
+            raise ValueError("VOICEKIN_ANTI_SPOOFING_HOP_SECONDS must be greater than 0")
         if self.max_upload_size_mb < 1:
             raise ValueError("VOICEKIN_MAX_UPLOAD_SIZE_MB must be greater than or equal to 1")
         if self.min_audio_seconds < 0.1:
@@ -117,6 +145,43 @@ def get_settings() -> Settings:
                 "data/voicekin.sqlite3",
                 dotenv_values,
             )
+        ),
+        anti_spoofing_model_name=_get_env(
+            "VOICEKIN_ANTI_SPOOFING_MODEL_NAME",
+            "Vansh180/deepfake-audio-wav2vec2",
+            dotenv_values,
+        ),
+        anti_spoofing_model_dir=Path(
+            _get_env(
+                "VOICEKIN_ANTI_SPOOFING_MODEL_DIR",
+                "pretrained_models/deepfake-audio-wav2vec2",
+                dotenv_values,
+            )
+        ),
+        anti_spoofing_threshold=_get_float_env(
+            "VOICEKIN_ANTI_SPOOFING_THRESHOLD",
+            0.07,
+            dotenv_values,
+        ),
+        anti_spoofing_spoof_labels=_get_tuple_env(
+            "VOICEKIN_ANTI_SPOOFING_SPOOF_LABELS",
+            ("spoof", "fake", "deepfake", "synthetic", "generated", "label_1"),
+            dotenv_values,
+        ),
+        anti_spoofing_max_audio_seconds=_get_float_env(
+            "VOICEKIN_ANTI_SPOOFING_MAX_AUDIO_SECONDS",
+            60.0,
+            dotenv_values,
+        ),
+        anti_spoofing_window_seconds=_get_float_env(
+            "VOICEKIN_ANTI_SPOOFING_WINDOW_SECONDS",
+            5.0,
+            dotenv_values,
+        ),
+        anti_spoofing_hop_seconds=_get_float_env(
+            "VOICEKIN_ANTI_SPOOFING_HOP_SECONDS",
+            2.5,
+            dotenv_values,
         ),
         speaker_threshold=_get_float_env("VOICEKIN_SPEAKER_THRESHOLD", 0.75, dotenv_values),
         device=_get_env("VOICEKIN_DEVICE", "cpu", dotenv_values),

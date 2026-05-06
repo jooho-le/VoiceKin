@@ -7,22 +7,27 @@ VoiceKin 1차 서버는 가족 사칭형 AI 보이스피싱 방지를 위한 **A
 - Python
 - FastAPI
 - SpeechBrain
+- Hugging Face Transformers
 - PyTorch / Torchaudio
-- Pretrained model: `speechbrain/spkrec-ecapa-voxceleb`
+- Speaker verification model: `speechbrain/spkrec-ecapa-voxceleb`
+- Anti-spoofing model: `Vansh180/deepfake-audio-wav2vec2`
 
 ## 프로젝트 구조
 
 ```text
 app/
   main.py
+  api/routes/anti_spoofing.py
   api/routes/family.py
   api/routes/voice.py
   core/config.py
   db/session.py
   repositories/family_repository.py
+  schemas/anti_spoofing.py
   schemas/family.py
   schemas/voice.py
   services/model_provider.py
+  services/anti_spoofing_service.py
   services/speaker_service.py
   services/voiceprint_service.py
   utils/audio.py
@@ -52,7 +57,7 @@ brew install ffmpeg
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-처음 `/api/v1/voice/compare` 요청이 들어오면 SpeechBrain이 Hugging Face에서 pretrained model 파일을 `pretrained_models/spkrec-ecapa-voxceleb` 경로로 자동 다운로드합니다. 첫 요청은 다운로드 때문에 시간이 오래 걸릴 수 있습니다.
+처음 `/api/v1/voice/compare` 또는 `/api/v1/voice/verify-family` 요청이 들어오면 SpeechBrain이 Hugging Face에서 speaker verification 모델 파일을 `pretrained_models/spkrec-ecapa-voxceleb` 경로로 자동 다운로드합니다. 처음 `/api/v1/anti-spoofing/detect` 또는 `/api/v1/voice/verify-family-secure` 요청이 들어오면 Hugging Face Transformers가 anti-spoofing 모델 파일을 `pretrained_models/deepfake-audio-wav2vec2` 경로로 자동 다운로드합니다. 첫 요청은 다운로드 때문에 시간이 오래 걸릴 수 있습니다.
 
 서버 시작 시 SQLite DB 파일이 자동 생성됩니다.
 
@@ -163,6 +168,109 @@ curl -X POST "http://localhost:8000/api/v1/voice/verify-family" \
 
 등록된 가족이 없으면 `best_match`는 `null`, `candidates`는 빈 배열로 반환됩니다.
 
+### Anti-Spoofing Detect
+
+새 음성 1개를 업로드하면 Hugging Face audio classification 모델로 실제 사람 음성인지, spoof/deepfake 의심 음성인지 판별합니다.
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/anti-spoofing/detect" \
+  -F "audio_file=@/path/to/call_voice.m4a"
+```
+
+응답 예시:
+
+```json
+{
+  "is_spoofed": true,
+  "spoof_score": 0.0723,
+  "threshold": 0.07,
+  "predicted_label": "real",
+  "predicted_score": 0.9277,
+  "message": "spoof",
+  "model_name": "Vansh180/deepfake-audio-wav2vec2",
+  "analyzed_segments": 3,
+  "max_spoof_segment_index": 1,
+  "segment_seconds": 5.0,
+  "label_scores": [
+    {
+      "label": "real",
+      "score": 0.9277
+    },
+    {
+      "label": "fake",
+      "score": 0.0723
+    }
+  ]
+}
+```
+
+### Secure Family Verification
+
+새 통화 음성 1개를 등록 가족 전체와 비교하고, 동시에 딥페이크 탐지도 수행합니다.
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/voice/verify-family-secure" \
+  -F "audio_file=@/path/to/call_voice.m4a"
+```
+
+응답 예시:
+
+```json
+{
+  "is_trusted": false,
+  "final_decision": "spoofed_family_like_voice",
+  "family_verification": {
+    "is_registered_family": true,
+    "best_match": {
+      "family_id": 1,
+      "name": "엄마",
+      "relation": "mother",
+      "similarity": 0.86
+    },
+    "threshold": 0.75,
+    "candidates": [
+      {
+        "family_id": 1,
+        "name": "엄마",
+        "relation": "mother",
+        "similarity": 0.86
+      }
+    ],
+    "message": "registered_family_matched",
+    "model_name": "speechbrain/spkrec-ecapa-voxceleb"
+  },
+  "anti_spoofing": {
+    "is_spoofed": true,
+    "spoof_score": 0.0723,
+    "threshold": 0.07,
+    "predicted_label": "real",
+    "predicted_score": 0.9277,
+    "message": "spoof",
+    "model_name": "Vansh180/deepfake-audio-wav2vec2",
+    "analyzed_segments": 3,
+    "max_spoof_segment_index": 1,
+    "segment_seconds": 5.0,
+    "label_scores": [
+      {
+        "label": "real",
+        "score": 0.9277
+      },
+      {
+        "label": "fake",
+        "score": 0.0723
+      }
+    ]
+  }
+}
+```
+
+`final_decision` 값은 다음 규칙으로 정해집니다.
+
+- `trusted_family_voice`: 등록 가족과 매칭되고 spoof 의심이 낮음
+- `spoofed_family_like_voice`: 등록 가족과 비슷하지만 spoof 의심이 높음
+- `unknown_real_voice`: 등록 가족과 매칭되지 않지만 spoof 의심이 낮음
+- `spoofed_unknown_voice`: 등록 가족과 매칭되지 않고 spoof 의심이 높음
+
 ### Family List
 
 등록된 가족 목록을 조회합니다.
@@ -234,6 +342,10 @@ VOICEKIN_MAX_UPLOAD_SIZE_MB=50 uvicorn app.main:app --reload
 VOICEKIN_MIN_AUDIO_SECONDS=1.5 uvicorn app.main:app --reload
 VOICEKIN_DEVICE=cpu uvicorn app.main:app --reload
 VOICEKIN_DATABASE_PATH=data/voicekin.sqlite3 uvicorn app.main:app --reload
+VOICEKIN_ANTI_SPOOFING_THRESHOLD=0.07 uvicorn app.main:app --reload
+VOICEKIN_ANTI_SPOOFING_MODEL_NAME=Vansh180/deepfake-audio-wav2vec2 uvicorn app.main:app --reload
+VOICEKIN_ANTI_SPOOFING_WINDOW_SECONDS=5.0 uvicorn app.main:app --reload
+VOICEKIN_ANTI_SPOOFING_HOP_SECONDS=2.5 uvicorn app.main:app --reload
 ```
 
 주요 설정:
@@ -244,10 +356,18 @@ VOICEKIN_DATABASE_PATH=data/voicekin.sqlite3 uvicorn app.main:app --reload
 - `target_sample_rate`: 모델 입력용 샘플레이트입니다. 기본값은 `16000Hz`입니다.
 - `device`: 기본값은 `cpu`입니다. CUDA 서버에서는 `cuda` 또는 `auto`로 바꿀 수 있습니다.
 - `database_path`: 가족 voiceprint 저장용 SQLite DB 경로입니다. 기본값은 `data/voicekin.sqlite3`입니다.
+- `anti_spoofing_model_name`: Hugging Face anti-spoofing audio classification 모델명입니다. 기본값은 `Vansh180/deepfake-audio-wav2vec2`입니다.
+- `anti_spoofing_threshold`: spoof로 판단할 score 기준값입니다. 기본값은 `0.07`입니다. 낮을수록 더 민감하지만 정상 음성을 spoof로 오판할 수 있습니다.
+- `anti_spoofing_spoof_labels`: spoof score에 합산할 모델 label 목록입니다. 기본값은 `spoof,fake,deepfake,synthetic,generated,label_1`입니다.
+- `anti_spoofing_max_audio_seconds`: anti-spoofing 모델이 분석할 최대 음성 길이입니다. 기본값은 `60초`입니다.
+- `anti_spoofing_window_seconds`: anti-spoofing 모델이 한 번에 분석하는 구간 길이입니다. 기본값은 `5초`입니다.
+- `anti_spoofing_hop_seconds`: anti-spoofing 구간을 이동하는 간격입니다. 기본값은 `2.5초`입니다.
 
 ## 모델 설명
 
-이 서버는 SpeechBrain의 `speechbrain/spkrec-ecapa-voxceleb` pretrained 모델을 사용합니다. 이 모델은 VoxCeleb 데이터셋으로 학습된 ECAPA-TDNN 기반 speaker verification 모델입니다.
+이 서버는 화자 인증에는 SpeechBrain의 `speechbrain/spkrec-ecapa-voxceleb` pretrained 모델을 사용합니다. 이 모델은 VoxCeleb 데이터셋으로 학습된 ECAPA-TDNN 기반 speaker verification 모델입니다.
+
+딥페이크 탐지에는 Hugging Face의 `Vansh180/deepfake-audio-wav2vec2` audio classification 모델을 사용합니다. 이 모델은 `facebook/wav2vec2-base` 기반으로 fine-tuning된 real/spoof speech 분류 모델이며, 현재 모델 config 기준 label은 `real`과 `fake`입니다.
 
 처리 흐름:
 
@@ -278,12 +398,32 @@ VOICEKIN_DATABASE_PATH=data/voicekin.sqlite3 uvicorn app.main:app --reload
 6. similarity가 가장 높은 가족을 `best_match`로 반환합니다.
 7. `best_match.similarity >= threshold`이면 등록 가족으로 판단합니다.
 
+딥페이크 탐지 흐름:
+
+1. `POST /api/v1/anti-spoofing/detect`로 새 음성 파일을 업로드합니다.
+2. 음성을 16kHz mono wav로 변환합니다.
+3. 음성을 5초 구간으로 나누고 2.5초 간격으로 겹쳐서 분석합니다.
+4. 각 구간마다 Hugging Face `AutoFeatureExtractor`로 모델 입력을 만듭니다.
+5. `AutoModelForAudioClassification`으로 label별 확률을 계산합니다.
+6. `spoof`, `fake`, `label_1` 등 config에 등록된 label 확률을 합산해 구간별 `spoof_score`를 만듭니다.
+7. 모든 구간 중 가장 높은 `spoof_score`를 최종 `spoof_score`로 사용합니다.
+8. `spoof_score >= anti_spoofing_threshold`이면 spoof/deepfake 의심 음성으로 판단합니다.
+
+통합 보안 검증 흐름:
+
+1. `POST /api/v1/voice/verify-family-secure`로 새 통화 음성을 업로드합니다.
+2. 등록 가족 전체 비교를 수행합니다.
+3. anti-spoofing 탐지를 수행합니다.
+4. 가족 매칭 여부와 spoof 여부를 합쳐 `final_decision`을 반환합니다.
+
 SpeechBrain 모델 카드에 따르면 해당 모델은 speaker embedding 추출과 cosine similarity 기반 speaker verification에 사용할 수 있으며, 입력 음성은 16kHz single-channel 기준으로 학습되었습니다.
 
 참고:
 
 - https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb
+- https://huggingface.co/Vansh180/deepfake-audio-wav2vec2
 - https://speechbrain.readthedocs.io/en/stable/API/speechbrain.inference.classifiers.html
+- https://huggingface.co/docs/transformers/tasks/audio_classification
 
 ## 예외 처리
 
@@ -294,11 +434,11 @@ SpeechBrain 모델 카드에 따르면 해당 모델은 speaker embedding 추출
 - 업로드 파일 크기 초과: `413`
 - 음성 디코딩 실패: `422`
 - 너무 짧은 음성: `400`
-- embedding 추출 또는 모델 오류: `500`
+- embedding 추출, anti-spoofing 추론, 모델 로딩 오류: `500`
 
 요청 처리 중 생성한 원본 임시 파일과 변환 wav 파일은 `finally` 블록에서 정리됩니다.
 
-## 2차/3차 테스트 순서
+## 2차/3차/4차 테스트 순서
 
 1. 서버 실행:
 
@@ -353,27 +493,57 @@ curl -X POST "http://127.0.0.1:8000/api/v1/voice/verify-family" \
 - `candidates`: 등록 가족별 similarity 목록
 - `message`: `registered_family_matched` 또는 `no_registered_family_match`
 
-8. 등록 삭제 테스트:
+8. 딥페이크 탐지만 단독 테스트:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/v1/anti-spoofing/detect" \
+  -F "audio_file=@/Users/leejooho/Desktop/call_voice.m4a"
+```
+
+응답에서 확인할 값:
+
+- `is_spoofed`: spoof/deepfake 의심 여부
+- `spoof_score`: spoof label 확률 합산값
+- `predicted_label`: 모델이 가장 높게 본 label
+- `label_scores`: label별 확률
+- `analyzed_segments`: 분석한 음성 구간 수
+- `max_spoof_segment_index`: 가장 높은 spoof score가 나온 구간 번호
+
+9. 가족 검증과 딥페이크 탐지를 함께 테스트:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/v1/voice/verify-family-secure" \
+  -F "audio_file=@/Users/leejooho/Desktop/call_voice.m4a"
+```
+
+응답에서 확인할 값:
+
+- `is_trusted`: 등록 가족과 매칭되고 spoof가 아닌지
+- `final_decision`: 최종 판단
+- `family_verification`: 등록 가족 비교 결과
+- `anti_spoofing`: 딥페이크 탐지 결과
+
+10. 등록 삭제 테스트:
 
 ```bash
 curl -X DELETE "http://127.0.0.1:8000/api/v1/family/1"
 ```
 
-9. Swagger 테스트:
+11. Swagger 테스트:
 
 ```text
 http://127.0.0.1:8000/docs
 ```
 
-Swagger에서는 `family` 섹션의 `POST /api/v1/family/register`로 가족을 등록한 뒤, `voice` 섹션의 `POST /api/v1/voice/verify-family`로 새 통화 음성을 업로드하면 됩니다.
+Swagger에서는 `family` 섹션의 `POST /api/v1/family/register`로 가족을 등록한 뒤, `voice` 섹션의 `POST /api/v1/voice/verify-family-secure`로 새 통화 음성을 업로드하면 됩니다. 딥페이크 탐지만 따로 확인하려면 `anti-spoofing` 섹션의 `POST /api/v1/anti-spoofing/detect`를 사용하면 됩니다.
 
 ## 확장 방향
 
-현재는 speaker verification만 구현되어 있습니다. 이후 기능은 현재 구조에 맞춰 확장할 수 있습니다.
+현재는 speaker verification, 가족 voiceprint 저장, 등록 가족 전체 비교, Hugging Face audio classification 기반 anti-spoofing 탐지가 구현되어 있습니다. 이후 기능은 현재 구조에 맞춰 확장할 수 있습니다.
 
 - 등록된 가족 voiceprint 저장: speaker embedding을 DB에 저장하고 재사용
 - 가족 화이트리스트 비교: 여러 가족 embedding과 call embedding을 일괄 비교
-- anti-spoofing / 딥페이크 탐지: `app/services/anti_spoofing_service.py`를 추가하고 AASIST 같은 모델을 별도 서비스 클래스로 구현
+- anti-spoofing 고도화: AASIST 같은 전용 모델로 교체하거나 ensemble 방식으로 확장
 - Android 앱 연동: multipart 업로드 API를 앱에서 호출
 
 이 구조에서는 FastAPI 라우터가 모델 세부 구현을 직접 알지 않고 `SpeakerVerificationService`만 호출합니다. 따라서 anti-spoofing 모델을 추가할 때도 API 레이어에서 `SpeakerVerificationService`와 `AntiSpoofingService`를 조합하는 방식으로 확장할 수 있습니다.

@@ -4,6 +4,7 @@ import sys
 
 from fastapi import FastAPI
 
+from app.api.routes.anti_spoofing import router as anti_spoofing_router
 from app.api.routes.family import router as family_router
 from app.api.routes.voice import router as voice_router
 from app.core.config import get_settings
@@ -49,3 +50,4 @@ async def health() -> dict[str, str]:
 
 app.include_router(voice_router, prefix=settings.api_v1_prefix)
 app.include_router(family_router, prefix=settings.api_v1_prefix)
+app.include_router(anti_spoofing_router, prefix=settings.api_v1_prefix)

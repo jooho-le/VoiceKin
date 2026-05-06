@@ -1,5 +1,7 @@
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.anti_spoofing import AntiSpoofingResponse
+
 
 class VoiceCompareResponse(BaseModel):
     """Response body for speaker verification."""
@@ -66,3 +68,16 @@ class VerifyFamilyResponse(BaseModel):
         ...,
         examples=["speechbrain/spkrec-ecapa-voxceleb"],
     )
+
+
+class SecureVoiceVerificationResponse(BaseModel):
+    """Combined family verification and anti-spoofing result."""
+
+    is_trusted: bool = Field(
+        ...,
+        description="True only when the voice matches a registered family member and is not spoofed.",
+        examples=[True],
+    )
+    final_decision: str = Field(..., examples=["trusted_family_voice"])
+    family_verification: VerifyFamilyResponse
+    anti_spoofing: AntiSpoofingResponse

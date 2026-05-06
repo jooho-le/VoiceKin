@@ -5,14 +5,21 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from app.core.config import Settings, get_settings
 from app.repositories.family_repository import FamilyRepository
+from app.schemas.anti_spoofing import AntiSpoofingLabelScore, AntiSpoofingResponse
 from app.schemas.voice import (
     FamilyCandidateResponse,
+    SecureVoiceVerificationResponse,
     VerifyFamilyResponse,
     VoiceCompareResponse,
 )
-from app.services.model_provider import get_speaker_service
+from app.services.anti_spoofing_service import AntiSpoofingError, AntiSpoofingResult
+from app.services.model_provider import get_anti_spoofing_service, get_speaker_service
 from app.services.speaker_service import SpeakerVerificationError
-from app.services.voiceprint_service import FamilyVoiceMatch, VoiceprintService
+from app.services.voiceprint_service import (
+    FamilyVerificationResult,
+    FamilyVoiceMatch,
+    VoiceprintService,
+)
 from app.utils.audio import (
     AudioDecodingError,
     AudioTooShortError,
@@ -41,6 +48,58 @@ def _to_candidate_response(match: FamilyVoiceMatch) -> FamilyCandidateResponse:
         relation=match.relation,
         similarity=match.similarity,
     )
+
+
+def _family_result_to_response(result: FamilyVerificationResult) -> VerifyFamilyResponse:
+    best_match = (
+        _to_candidate_response(result.best_match)
+        if result.best_match is not None
+        else None
+    )
+
+    return VerifyFamilyResponse(
+        is_registered_family=result.is_registered_family,
+        best_match=best_match,
+        threshold=result.threshold,
+        candidates=[
+            _to_candidate_response(candidate)
+            for candidate in result.candidates
+        ],
+        message=result.message,
+        model_name=result.model_name,
+    )
+
+
+def _anti_spoofing_result_to_response(result: AntiSpoofingResult) -> AntiSpoofingResponse:
+    return AntiSpoofingResponse(
+        is_spoofed=result.is_spoofed,
+        spoof_score=result.spoof_score,
+        threshold=result.threshold,
+        predicted_label=result.predicted_label,
+        predicted_score=result.predicted_score,
+        message=result.message,
+        model_name=result.model_name,
+        analyzed_segments=result.analyzed_segments,
+        max_spoof_segment_index=result.max_spoof_segment_index,
+        segment_seconds=result.segment_seconds,
+        label_scores=[
+            AntiSpoofingLabelScore(label=label_score.label, score=label_score.score)
+            for label_score in result.label_scores
+        ],
+    )
+
+
+def _make_secure_decision(
+    is_registered_family: bool,
+    is_spoofed: bool,
+) -> tuple[bool, str]:
+    if is_registered_family and not is_spoofed:
+        return True, "trusted_family_voice"
+    if is_registered_family and is_spoofed:
+        return False, "spoofed_family_like_voice"
+    if not is_registered_family and not is_spoofed:
+        return False, "unknown_real_voice"
+    return False, "spoofed_unknown_voice"
 
 
 @router.post("/compare", response_model=VoiceCompareResponse)
@@ -186,24 +245,7 @@ async def verify_family_voice(
             speaker_service=get_speaker_service(),
         )
         result = voiceprint_service.verify_family_voice(wav_file)
-
-        best_match = (
-            _to_candidate_response(result.best_match)
-            if result.best_match is not None
-            else None
-        )
-
-        return VerifyFamilyResponse(
-            is_registered_family=result.is_registered_family,
-            best_match=best_match,
-            threshold=result.threshold,
-            candidates=[
-                _to_candidate_response(candidate)
-                for candidate in result.candidates
-            ],
-            message=result.message,
-            model_name=result.model_name,
-        )
+        return _family_result_to_response(result)
 
     except MissingAudioFileError as exc:
         raise HTTPException(
@@ -245,6 +287,101 @@ async def verify_family_voice(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="internal server error during family voice verification",
+        ) from exc
+    finally:
+        cleanup_temp_files(temp_paths)
+
+
+@router.post("/verify-family-secure", response_model=SecureVoiceVerificationResponse)
+async def verify_family_voice_secure(
+    audio_file: UploadFile | None = File(
+        default=None,
+        description="New call voice file for family verification plus anti-spoofing.",
+    ),
+    settings: Settings = Depends(get_settings),
+    family_repository: FamilyRepository = Depends(get_family_repository),
+) -> SecureVoiceVerificationResponse:
+    """Compare one voice against family voiceprints and run deepfake detection."""
+
+    temp_paths: list[Path | None] = []
+
+    try:
+        if audio_file is None:
+            raise MissingAudioFileError("audio_file is required")
+
+        original_file = await save_upload_file_to_temp(
+            upload_file=audio_file,
+            allowed_extensions=settings.allowed_audio_extensions,
+            max_size_bytes=settings.max_upload_size_bytes,
+        )
+        temp_paths.append(original_file)
+
+        wav_file = convert_audio_to_standard_wav(
+            input_path=original_file,
+            target_sample_rate=settings.target_sample_rate,
+            min_audio_seconds=settings.min_audio_seconds,
+        )
+        temp_paths.append(wav_file)
+
+        voiceprint_service = VoiceprintService(
+            family_repository=family_repository,
+            speaker_service=get_speaker_service(),
+        )
+        family_result = voiceprint_service.verify_family_voice(wav_file)
+        anti_spoofing_result = get_anti_spoofing_service().detect_file(wav_file)
+
+        is_trusted, final_decision = _make_secure_decision(
+            is_registered_family=family_result.is_registered_family,
+            is_spoofed=anti_spoofing_result.is_spoofed,
+        )
+
+        return SecureVoiceVerificationResponse(
+            is_trusted=is_trusted,
+            final_decision=final_decision,
+            family_verification=_family_result_to_response(family_result),
+            anti_spoofing=_anti_spoofing_result_to_response(anti_spoofing_result),
+        )
+
+    except MissingAudioFileError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except UnsupportedAudioFormatError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=str(exc),
+        ) from exc
+    except UploadFileTooLargeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=str(exc),
+        ) from exc
+    except AudioTooShortError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except AudioDecodingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    except AudioValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except (SpeakerVerificationError, AntiSpoofingError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        logger.exception("Unexpected error during secure family voice verification")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="internal server error during secure family voice verification",
         ) from exc
     finally:
         cleanup_temp_files(temp_paths)
