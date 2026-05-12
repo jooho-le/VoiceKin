@@ -20,15 +20,19 @@ app/
   api/routes/anti_spoofing.py
   api/routes/family.py
   api/routes/voice.py
+  api/routes/voice_session.py
   core/config.py
   db/session.py
   repositories/family_repository.py
+  repositories/voice_session_repository.py
   schemas/anti_spoofing.py
   schemas/family.py
   schemas/voice.py
+  schemas/voice_session.py
   services/model_provider.py
   services/anti_spoofing_service.py
   services/speaker_service.py
+  services/voice_session_service.py
   services/voiceprint_service.py
   utils/audio.py
 requirements.txt
@@ -271,6 +275,142 @@ curl -X POST "http://localhost:8000/api/v1/voice/verify-family-secure" \
 - `unknown_real_voice`: 등록 가족과 매칭되지 않지만 spoof 의심이 낮음
 - `spoofed_unknown_voice`: 등록 가족과 매칭되지 않고 spoof 의심이 높음
 
+### Chunk-Based Voice Session
+
+음성을 한 번에 판단하지 않고, 3~5초 단위 청크를 계속 업로드하면서 누적 위험도를 갱신합니다. 나중에 Android 통화 연동을 붙일 때도 앱이 짧은 음성 청크를 이 API로 보내는 구조로 확장할 수 있습니다.
+
+1. 세션 시작:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/voice-sessions/start"
+```
+
+응답 예시:
+
+```json
+{
+  "session_id": "9d4a5f2f4d2b4ab6bb5a7b957b04e51d",
+  "status": "active",
+  "created_at": "2026-05-11T12:00:00+00:00",
+  "updated_at": "2026-05-11T12:00:00+00:00",
+  "ended_at": null,
+  "chunks_analyzed": 0,
+  "is_spoofed": false,
+  "is_registered_family": false,
+  "risk_level": "unknown",
+  "message": "no_chunks_analyzed",
+  "max_spoof_score": 0.0,
+  "max_spoof_chunk_index": null,
+  "best_family_match": null,
+  "speaker_threshold": 0.75,
+  "anti_spoofing_threshold": 0.07
+}
+```
+
+2. 청크 업로드:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/voice-sessions/9d4a5f2f4d2b4ab6bb5a7b957b04e51d/chunks" \
+  -F "chunk_index=0" \
+  -F "audio_file=@/path/to/chunk_0.m4a"
+```
+
+`chunk_index`는 생략할 수 있습니다. 생략하면 서버가 현재 세션의 다음 번호를 자동으로 붙입니다.
+
+응답 예시:
+
+```json
+{
+  "session_id": "9d4a5f2f4d2b4ab6bb5a7b957b04e51d",
+  "chunk_index": 0,
+  "is_trusted_chunk": true,
+  "final_decision": "trusted_family_voice",
+  "family_verification": {
+    "is_registered_family": true,
+    "best_match": {
+      "family_id": 1,
+      "name": "엄마",
+      "relation": "mother",
+      "similarity": 0.82
+    },
+    "threshold": 0.75,
+    "candidates": [
+      {
+        "family_id": 1,
+        "name": "엄마",
+        "relation": "mother",
+        "similarity": 0.82
+      }
+    ],
+    "message": "registered_family_matched",
+    "model_name": "speechbrain/spkrec-ecapa-voxceleb"
+  },
+  "anti_spoofing": {
+    "is_spoofed": false,
+    "spoof_score": 0.02,
+    "threshold": 0.07,
+    "predicted_label": "real",
+    "predicted_score": 0.98,
+    "message": "bonafide",
+    "model_name": "Vansh180/deepfake-audio-wav2vec2",
+    "analyzed_segments": 1,
+    "max_spoof_segment_index": 0,
+    "segment_seconds": 5.0,
+    "label_scores": [
+      {
+        "label": "real",
+        "score": 0.98
+      },
+      {
+        "label": "fake",
+        "score": 0.02
+      }
+    ]
+  },
+  "rolling_result": {
+    "session_id": "9d4a5f2f4d2b4ab6bb5a7b957b04e51d",
+    "status": "active",
+    "created_at": "2026-05-11T12:00:00+00:00",
+    "updated_at": "2026-05-11T12:00:05+00:00",
+    "ended_at": null,
+    "chunks_analyzed": 1,
+    "is_spoofed": false,
+    "is_registered_family": true,
+    "risk_level": "low",
+    "message": "registered_family_likely",
+    "max_spoof_score": 0.02,
+    "max_spoof_chunk_index": 0,
+    "best_family_match": {
+      "family_id": 1,
+      "name": "엄마",
+      "relation": "mother",
+      "similarity": 0.82
+    },
+    "speaker_threshold": 0.75,
+    "anti_spoofing_threshold": 0.07
+  }
+}
+```
+
+3. 세션 상태 조회:
+
+```bash
+curl "http://localhost:8000/api/v1/voice-sessions/9d4a5f2f4d2b4ab6bb5a7b957b04e51d"
+```
+
+4. 세션 종료:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/voice-sessions/9d4a5f2f4d2b4ab6bb5a7b957b04e51d/end"
+```
+
+`risk_level` 값은 다음 의미입니다.
+
+- `unknown`: 아직 분석한 청크가 없음
+- `low`: 등록 가족과 매칭되고 spoof 의심이 낮음
+- `medium`: spoof 의심은 낮지만 등록 가족과 매칭되지 않음
+- `high`: 하나 이상의 청크에서 spoof/deepfake 의심이 threshold 이상임
+
 ### Family List
 
 등록된 가족 목록을 조회합니다.
@@ -416,6 +556,16 @@ VOICEKIN_ANTI_SPOOFING_HOP_SECONDS=2.5 uvicorn app.main:app --reload
 3. anti-spoofing 탐지를 수행합니다.
 4. 가족 매칭 여부와 spoof 여부를 합쳐 `final_decision`을 반환합니다.
 
+청크 기반 연속 분석 흐름:
+
+1. `POST /api/v1/voice-sessions/start`로 세션을 생성합니다.
+2. `POST /api/v1/voice-sessions/{session_id}/chunks`로 3~5초 단위 음성을 반복 업로드합니다.
+3. 각 청크마다 등록 가족 전체 비교와 anti-spoofing 탐지를 수행합니다.
+4. `voice_session_chunks` 테이블에 청크별 판단 결과를 저장합니다.
+5. 전체 청크 중 가장 높은 `spoof_score`와 가장 높은 가족 similarity를 기준으로 rolling result를 갱신합니다.
+6. `GET /api/v1/voice-sessions/{session_id}`로 현재까지의 누적 위험도를 조회합니다.
+7. 분석이 끝나면 `POST /api/v1/voice-sessions/{session_id}/end`로 세션을 종료합니다.
+
 SpeechBrain 모델 카드에 따르면 해당 모델은 speaker embedding 추출과 cosine similarity 기반 speaker verification에 사용할 수 있으며, 입력 음성은 16kHz single-channel 기준으로 학습되었습니다.
 
 참고:
@@ -438,7 +588,7 @@ SpeechBrain 모델 카드에 따르면 해당 모델은 speaker embedding 추출
 
 요청 처리 중 생성한 원본 임시 파일과 변환 wav 파일은 `finally` 블록에서 정리됩니다.
 
-## 2차/3차/4차 테스트 순서
+## 2차/3차/4차/4.5차 테스트 순서
 
 1. 서버 실행:
 
@@ -523,27 +673,69 @@ curl -X POST "http://127.0.0.1:8000/api/v1/voice/verify-family-secure" \
 - `family_verification`: 등록 가족 비교 결과
 - `anti_spoofing`: 딥페이크 탐지 결과
 
-10. 등록 삭제 테스트:
+10. 청크 기반 연속 분석 세션 테스트:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/v1/voice-sessions/start"
+```
+
+응답의 `session_id`를 복사해서 아래 요청에 넣습니다.
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/v1/voice-sessions/{session_id}/chunks" \
+  -F "chunk_index=0" \
+  -F "audio_file=@/Users/leejooho/Desktop/chunk_0.m4a"
+```
+
+다음 청크는 `chunk_index=1`, `chunk_index=2`처럼 올리면 됩니다. `chunk_index`를 아예 빼면 서버가 자동으로 다음 번호를 붙입니다.
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/v1/voice-sessions/{session_id}/chunks" \
+  -F "audio_file=@/Users/leejooho/Desktop/chunk_1.m4a"
+```
+
+중간 상태 조회:
+
+```bash
+curl "http://127.0.0.1:8000/api/v1/voice-sessions/{session_id}"
+```
+
+세션 종료:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/v1/voice-sessions/{session_id}/end"
+```
+
+응답에서 확인할 값:
+
+- `rolling_result.chunks_analyzed`: 지금까지 분석한 청크 수
+- `rolling_result.max_spoof_score`: 지금까지 가장 높았던 spoof score
+- `rolling_result.max_spoof_chunk_index`: spoof score가 가장 높았던 청크 번호
+- `rolling_result.best_family_match`: 지금까지 가장 비슷했던 등록 가족
+- `rolling_result.risk_level`: 현재 누적 위험도
+- `final_decision`: 이번 청크 하나만 놓고 본 판단
+
+11. 등록 삭제 테스트:
 
 ```bash
 curl -X DELETE "http://127.0.0.1:8000/api/v1/family/1"
 ```
 
-11. Swagger 테스트:
+12. Swagger 테스트:
 
 ```text
 http://127.0.0.1:8000/docs
 ```
 
-Swagger에서는 `family` 섹션의 `POST /api/v1/family/register`로 가족을 등록한 뒤, `voice` 섹션의 `POST /api/v1/voice/verify-family-secure`로 새 통화 음성을 업로드하면 됩니다. 딥페이크 탐지만 따로 확인하려면 `anti-spoofing` 섹션의 `POST /api/v1/anti-spoofing/detect`를 사용하면 됩니다.
+Swagger에서는 `family` 섹션의 `POST /api/v1/family/register`로 가족을 등록한 뒤, `voice` 섹션의 `POST /api/v1/voice/verify-family-secure`로 새 통화 음성을 업로드하면 됩니다. 청크 기반 테스트는 `voice-sessions` 섹션에서 `start -> chunks -> status -> end` 순서로 진행하면 됩니다. 딥페이크 탐지만 따로 확인하려면 `anti-spoofing` 섹션의 `POST /api/v1/anti-spoofing/detect`를 사용하면 됩니다.
 
 ## 확장 방향
 
-현재는 speaker verification, 가족 voiceprint 저장, 등록 가족 전체 비교, Hugging Face audio classification 기반 anti-spoofing 탐지가 구현되어 있습니다. 이후 기능은 현재 구조에 맞춰 확장할 수 있습니다.
+현재는 speaker verification, 가족 voiceprint 저장, 등록 가족 전체 비교, Hugging Face audio classification 기반 anti-spoofing 탐지, 청크 기반 연속 분석 세션이 구현되어 있습니다. 이후 기능은 현재 구조에 맞춰 확장할 수 있습니다.
 
 - 등록된 가족 voiceprint 저장: speaker embedding을 DB에 저장하고 재사용
 - 가족 화이트리스트 비교: 여러 가족 embedding과 call embedding을 일괄 비교
 - anti-spoofing 고도화: AASIST 같은 전용 모델로 교체하거나 ensemble 방식으로 확장
-- Android 앱 연동: multipart 업로드 API를 앱에서 호출
+- Android 앱 연동: 앱에서 3~5초 음성 청크를 만들어 `voice-sessions` API로 반복 업로드
 
 이 구조에서는 FastAPI 라우터가 모델 세부 구현을 직접 알지 않고 `SpeakerVerificationService`만 호출합니다. 따라서 anti-spoofing 모델을 추가할 때도 API 레이어에서 `SpeakerVerificationService`와 `AntiSpoofingService`를 조합하는 방식으로 확장할 수 있습니다.
