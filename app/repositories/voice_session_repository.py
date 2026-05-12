@@ -25,6 +25,12 @@ class VoiceSessionChunkRecord:
     id: int
     session_id: str
     chunk_index: int
+    is_analyzable: bool
+    quality_message: str
+    duration_seconds: float
+    rms_energy: float
+    peak_amplitude: float
+    speech_ratio: float
     final_decision: str
     is_trusted_chunk: bool
     is_spoofed: bool
@@ -121,6 +127,12 @@ class VoiceSessionRepository:
         self,
         session_id: str,
         chunk_index: int,
+        is_analyzable: bool,
+        quality_message: str,
+        duration_seconds: float,
+        rms_energy: float,
+        peak_amplitude: float,
+        speech_ratio: float,
         final_decision: str,
         is_trusted_chunk: bool,
         is_spoofed: bool,
@@ -139,6 +151,12 @@ class VoiceSessionRepository:
                 INSERT INTO voice_session_chunks (
                     session_id,
                     chunk_index,
+                    is_analyzable,
+                    quality_message,
+                    duration_seconds,
+                    rms_energy,
+                    peak_amplitude,
+                    speech_ratio,
                     final_decision,
                     is_trusted_chunk,
                     is_spoofed,
@@ -151,11 +169,17 @@ class VoiceSessionRepository:
                     best_family_similarity,
                     created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session_id,
                     chunk_index,
+                    int(is_analyzable),
+                    quality_message,
+                    duration_seconds,
+                    rms_energy,
+                    peak_amplitude,
+                    speech_ratio,
                     final_decision,
                     int(is_trusted_chunk),
                     int(is_spoofed),
@@ -193,6 +217,12 @@ class VoiceSessionRepository:
                     id,
                     session_id,
                     chunk_index,
+                    is_analyzable,
+                    quality_message,
+                    duration_seconds,
+                    rms_energy,
+                    peak_amplitude,
+                    speech_ratio,
                     final_decision,
                     is_trusted_chunk,
                     is_spoofed,
@@ -222,6 +252,12 @@ class VoiceSessionRepository:
                     id,
                     session_id,
                     chunk_index,
+                    is_analyzable,
+                    quality_message,
+                    duration_seconds,
+                    rms_energy,
+                    peak_amplitude,
+                    speech_ratio,
                     final_decision,
                     is_trusted_chunk,
                     is_spoofed,
@@ -258,6 +294,12 @@ class VoiceSessionRepository:
             id=int(row["id"]),
             session_id=str(row["session_id"]),
             chunk_index=int(row["chunk_index"]),
+            is_analyzable=bool(row["is_analyzable"]),
+            quality_message=str(row["quality_message"]),
+            duration_seconds=float(row["duration_seconds"]),
+            rms_energy=float(row["rms_energy"]),
+            peak_amplitude=float(row["peak_amplitude"]),
+            speech_ratio=float(row["speech_ratio"]),
             final_decision=str(row["final_decision"]),
             is_trusted_chunk=bool(row["is_trusted_chunk"]),
             is_spoofed=bool(row["is_spoofed"]),

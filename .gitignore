@@ -29,6 +29,11 @@ models/
 tmp/
 temp/
 
+# Local evaluation outputs
+reports/*.csv
+reports/*.json
+!reports/.gitkeep
+
 # Test/lint/cache outputs
 .pytest_cache/
 .mypy_cache/

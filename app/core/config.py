@@ -39,6 +39,14 @@ class Settings:
     anti_spoofing_window_seconds: float = 5.0
     anti_spoofing_hop_seconds: float = 2.5
 
+    # Chunk session policy. These values reduce noisy decisions without model retraining.
+    voice_session_min_analyzable_seconds: float = 2.0
+    voice_session_min_rms_energy: float = 0.005
+    voice_session_min_speech_ratio: float = 0.25
+    voice_session_repeated_spoof_chunks: int = 2
+    voice_session_strong_spoof_score: float = 0.35
+    voice_session_family_confirm_chunks: int = 2
+
     # Tune this value with real VoiceKin validation data later.
     speaker_threshold: float = 0.75
 
@@ -65,6 +73,31 @@ class Settings:
             )
         if self.anti_spoofing_hop_seconds <= 0:
             raise ValueError("VOICEKIN_ANTI_SPOOFING_HOP_SECONDS must be greater than 0")
+        if self.voice_session_min_analyzable_seconds < self.min_audio_seconds:
+            raise ValueError(
+                "VOICEKIN_VOICE_SESSION_MIN_ANALYZABLE_SECONDS must be greater than "
+                "or equal to VOICEKIN_MIN_AUDIO_SECONDS"
+            )
+        if not 0.0 <= self.voice_session_min_rms_energy <= 1.0:
+            raise ValueError(
+                "VOICEKIN_VOICE_SESSION_MIN_RMS_ENERGY must be between 0.0 and 1.0"
+            )
+        if not 0.0 <= self.voice_session_min_speech_ratio <= 1.0:
+            raise ValueError(
+                "VOICEKIN_VOICE_SESSION_MIN_SPEECH_RATIO must be between 0.0 and 1.0"
+            )
+        if self.voice_session_repeated_spoof_chunks < 1:
+            raise ValueError(
+                "VOICEKIN_VOICE_SESSION_REPEATED_SPOOF_CHUNKS must be greater than or equal to 1"
+            )
+        if not 0.0 <= self.voice_session_strong_spoof_score <= 1.0:
+            raise ValueError(
+                "VOICEKIN_VOICE_SESSION_STRONG_SPOOF_SCORE must be between 0.0 and 1.0"
+            )
+        if self.voice_session_family_confirm_chunks < 1:
+            raise ValueError(
+                "VOICEKIN_VOICE_SESSION_FAMILY_CONFIRM_CHUNKS must be greater than or equal to 1"
+            )
         if self.max_upload_size_mb < 1:
             raise ValueError("VOICEKIN_MAX_UPLOAD_SIZE_MB must be greater than or equal to 1")
         if self.min_audio_seconds < 0.1:
@@ -181,6 +214,36 @@ def get_settings() -> Settings:
         anti_spoofing_hop_seconds=_get_float_env(
             "VOICEKIN_ANTI_SPOOFING_HOP_SECONDS",
             2.5,
+            dotenv_values,
+        ),
+        voice_session_min_analyzable_seconds=_get_float_env(
+            "VOICEKIN_VOICE_SESSION_MIN_ANALYZABLE_SECONDS",
+            2.0,
+            dotenv_values,
+        ),
+        voice_session_min_rms_energy=_get_float_env(
+            "VOICEKIN_VOICE_SESSION_MIN_RMS_ENERGY",
+            0.005,
+            dotenv_values,
+        ),
+        voice_session_min_speech_ratio=_get_float_env(
+            "VOICEKIN_VOICE_SESSION_MIN_SPEECH_RATIO",
+            0.25,
+            dotenv_values,
+        ),
+        voice_session_repeated_spoof_chunks=_get_int_env(
+            "VOICEKIN_VOICE_SESSION_REPEATED_SPOOF_CHUNKS",
+            2,
+            dotenv_values,
+        ),
+        voice_session_strong_spoof_score=_get_float_env(
+            "VOICEKIN_VOICE_SESSION_STRONG_SPOOF_SCORE",
+            0.35,
+            dotenv_values,
+        ),
+        voice_session_family_confirm_chunks=_get_int_env(
+            "VOICEKIN_VOICE_SESSION_FAMILY_CONFIRM_CHUNKS",
+            2,
             dotenv_values,
         ),
         speaker_threshold=_get_float_env("VOICEKIN_SPEAKER_THRESHOLD", 0.75, dotenv_values),

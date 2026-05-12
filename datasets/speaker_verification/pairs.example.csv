@@ -1,0 +1,3 @@
+audio_file_1,audio_file_2,label
+mother/enroll_001.wav,mother/test_001.wav,same
+mother/enroll_001.wav,unknown/unknown_001.wav,different

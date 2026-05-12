@@ -29,6 +29,12 @@ CREATE TABLE IF NOT EXISTS voice_session_chunks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id TEXT NOT NULL,
     chunk_index INTEGER NOT NULL,
+    is_analyzable INTEGER NOT NULL DEFAULT 1,
+    quality_message TEXT NOT NULL DEFAULT 'not_recorded',
+    duration_seconds REAL NOT NULL DEFAULT 0.0,
+    rms_energy REAL NOT NULL DEFAULT 0.0,
+    peak_amplitude REAL NOT NULL DEFAULT 0.0,
+    speech_ratio REAL NOT NULL DEFAULT 0.0,
     final_decision TEXT NOT NULL,
     is_trusted_chunk INTEGER NOT NULL,
     is_spoofed INTEGER NOT NULL,
@@ -54,6 +60,7 @@ def init_db(settings: Settings) -> None:
         connection.execute(FAMILY_MEMBERS_SCHEMA)
         connection.execute(VOICE_SESSIONS_SCHEMA)
         connection.execute(VOICE_SESSION_CHUNKS_SCHEMA)
+        _ensure_voice_session_chunk_columns(connection)
         connection.commit()
 
 
@@ -63,3 +70,26 @@ def get_connection(database_path: Path) -> sqlite3.Connection:
     connection = sqlite3.connect(str(database_path))
     connection.row_factory = sqlite3.Row
     return connection
+
+
+def _ensure_voice_session_chunk_columns(connection: sqlite3.Connection) -> None:
+    """Add newly introduced columns when an older local SQLite DB already exists."""
+
+    columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(voice_session_chunks)").fetchall()
+    }
+    migrations = {
+        "is_analyzable": "INTEGER NOT NULL DEFAULT 1",
+        "quality_message": "TEXT NOT NULL DEFAULT 'not_recorded'",
+        "duration_seconds": "REAL NOT NULL DEFAULT 0.0",
+        "rms_energy": "REAL NOT NULL DEFAULT 0.0",
+        "peak_amplitude": "REAL NOT NULL DEFAULT 0.0",
+        "speech_ratio": "REAL NOT NULL DEFAULT 0.0",
+    }
+
+    for column_name, column_definition in migrations.items():
+        if column_name not in columns:
+            connection.execute(
+                f"ALTER TABLE voice_session_chunks ADD COLUMN {column_name} {column_definition}"
+            )
