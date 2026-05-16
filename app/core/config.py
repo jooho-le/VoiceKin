@@ -17,11 +17,18 @@ class Settings:
 
     app_name: str = "VoiceKin Speaker Verification API"
     api_v1_prefix: str = "/api/v1"
+    cors_allowed_origins: Tuple[str, ...] = (
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "capacitor://localhost",
+        "ionic://localhost",
+    )
 
     # SpeechBrain ECAPA-TDNN model published on Hugging Face.
     speaker_model_name: str = "speechbrain/spkrec-ecapa-voxceleb"
     speaker_model_dir: Path = Path("pretrained_models/spkrec-ecapa-voxceleb")
     database_path: Path = Path("data/voicekin.sqlite3")
+    demo_sample_dir: Path = Path("demo_samples")
 
     # Hugging Face audio classification model for real/spoof voice detection.
     anti_spoofing_model_name: str = "Vansh180/deepfake-audio-wav2vec2"
@@ -160,6 +167,16 @@ def get_settings() -> Settings:
     return Settings(
         app_name=_get_env("VOICEKIN_APP_NAME", "VoiceKin Speaker Verification API", dotenv_values),
         api_v1_prefix=_get_env("VOICEKIN_API_V1_PREFIX", "/api/v1", dotenv_values),
+        cors_allowed_origins=_get_tuple_env(
+            "VOICEKIN_CORS_ALLOWED_ORIGINS",
+            (
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+                "capacitor://localhost",
+                "ionic://localhost",
+            ),
+            dotenv_values,
+        ),
         speaker_model_name=_get_env(
             "VOICEKIN_SPEAKER_MODEL_NAME",
             "speechbrain/spkrec-ecapa-voxceleb",
@@ -176,6 +193,13 @@ def get_settings() -> Settings:
             _get_env(
                 "VOICEKIN_DATABASE_PATH",
                 "data/voicekin.sqlite3",
+                dotenv_values,
+            )
+        ),
+        demo_sample_dir=Path(
+            _get_env(
+                "VOICEKIN_DEMO_SAMPLE_DIR",
+                "demo_samples",
                 dotenv_values,
             )
         ),

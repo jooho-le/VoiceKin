@@ -3,8 +3,11 @@ import logging
 import sys
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes.anti_spoofing import router as anti_spoofing_router
+from app.api.routes.demo import router as demo_router
+from app.api.routes.demo import web_router as demo_web_router
 from app.api.routes.family import router as family_router
 from app.api.routes.voice import router as voice_router
 from app.api.routes.voice_session import router as voice_session_router
@@ -41,6 +44,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=list(settings.cors_allowed_origins),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 @app.get("/health")
 async def health() -> dict[str, str]:
@@ -49,7 +60,9 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+app.include_router(demo_web_router)
 app.include_router(voice_router, prefix=settings.api_v1_prefix)
 app.include_router(family_router, prefix=settings.api_v1_prefix)
 app.include_router(anti_spoofing_router, prefix=settings.api_v1_prefix)
 app.include_router(voice_session_router, prefix=settings.api_v1_prefix)
+app.include_router(demo_router, prefix=settings.api_v1_prefix)

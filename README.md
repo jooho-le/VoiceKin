@@ -43,6 +43,11 @@ scripts/
   evaluate_anti_spoofing.py
   evaluate_speaker_verification.py
 reports/
+mobile/
+  index.html
+  src/main.js
+  src/styles.css
+  android/
 requirements.txt
 README.md
 .gitignore
@@ -78,6 +83,42 @@ data/voicekin.sqlite3
 ```
 
 이 DB에는 가족 이름, 관계, 모델명, speaker embedding BLOB이 저장됩니다. API 응답에는 embedding을 노출하지 않습니다.
+
+## Android 시연 앱
+
+`mobile/` 폴더에는 Capacitor 기반 Android 시연 앱이 있습니다. AI 모델은 앱에서 돌지 않고 FastAPI 서버를 호출합니다.
+
+백엔드 실행:
+
+```bash
+cd /Users/leejooho/Desktop/FinNect
+source .venv/bin/activate
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+모바일 앱 설치/실행:
+
+```bash
+cd /Users/leejooho/Desktop/FinNect/mobile
+npm install
+npm run dev
+```
+
+브라우저 미리보기:
+
+```text
+http://127.0.0.1:5173
+```
+
+Android Studio로 열기:
+
+```bash
+npm run build
+npm run cap:sync
+npm run android
+```
+
+Android 에뮬레이터에서는 기본 API 주소가 `http://10.0.2.2:8000`입니다. 실제 기기에서는 앱 홈 화면에서 Mac의 같은 Wi-Fi IP 주소로 바꾸면 됩니다.
 
 ## API
 

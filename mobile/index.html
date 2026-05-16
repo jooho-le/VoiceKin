@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>VoiceKin Call Demo</title>
+  </head>
+  <body>
+    <div id="app">
+      <main class="call-screen">
+        <section class="call-top">
+          <div class="status-row">
+            <span id="networkStatus">VoiceKin 보호 중</span>
+            <span id="callTimer">00:00</span>
+          </div>
+
+          <div class="caller-block">
+            <div id="avatar" class="avatar">엄</div>
+            <p>수신 통화</p>
+            <h1 id="callerName">엄마</h1>
+            <span id="callState">통화 준비</span>
+          </div>
+        </section>
+
+        <section id="livePanel" class="live-panel">
+          <div class="pulse-ring">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <p id="liveMessage">통화 음성 파일을 선택하고 통화 시작 버튼을 누르세요.</p>
+        </section>
+
+        <section id="warningPopup" class="warning-popup hidden">
+          <div class="warning-icon">!</div>
+          <div>
+            <strong id="warningTitle">보이스피싱 의심</strong>
+            <p id="warningMessage">저장된 가족 목소리와 다릅니다.</p>
+          </div>
+        </section>
+
+        <section class="call-controls">
+          <button type="button" class="circle-control muted" aria-label="음소거">⌕</button>
+          <button type="button" class="circle-control muted" aria-label="키패드">▦</button>
+          <button id="startCallBtn" type="button" class="circle-control start" aria-label="통화 시작">▶</button>
+          <button id="stopCallBtn" type="button" class="circle-control end" aria-label="통화 종료">✕</button>
+        </section>
+
+        <audio id="callAudioPlayer"></audio>
+      </main>
+
+      <aside id="setupSheet" class="setup-sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">
+          <div>
+            <p>시연 설정</p>
+            <strong>통화 음성 준비</strong>
+          </div>
+          <button id="toggleSetupBtn" type="button" class="text-button">접기</button>
+        </div>
+
+        <div id="setupBody" class="setup-body">
+          <label class="field">
+            <span>API 서버 주소</span>
+            <input id="apiBaseInput" type="url" inputmode="url" />
+          </label>
+
+          <label class="field">
+            <span>화면에 표시할 통화 상대</span>
+            <input id="callerNameInput" type="text" value="엄마" />
+          </label>
+
+          <label class="file-card single">
+            <span>통화 음성 파일</span>
+            <input id="callAudioFile" type="file" accept="audio/*" />
+            <strong id="callFileName">파일 선택</strong>
+          </label>
+
+          <div class="setup-actions">
+            <button id="saveSetupBtn" type="button">저장</button>
+            <button id="prepareCallBtn" type="button" class="secondary">통화 준비</button>
+          </div>
+
+          <p id="setupHint">가족 voiceprint가 먼저 등록되어 있으면, 통화 중 저장된 가족 목소리와 다른지 자동 안내합니다.</p>
+        </div>
+      </aside>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

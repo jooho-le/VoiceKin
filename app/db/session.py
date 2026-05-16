@@ -50,6 +50,18 @@ CREATE TABLE IF NOT EXISTS voice_session_chunks (
 );
 """
 
+DEMO_SESSIONS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS demo_sessions (
+    id TEXT PRIMARY KEY,
+    sample_path TEXT NOT NULL,
+    actual_label TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    answered_at TEXT,
+    user_guess TEXT
+);
+"""
+
 
 def init_db(settings: Settings) -> None:
     """Create the SQLite database and required tables if they do not exist."""
@@ -60,6 +72,7 @@ def init_db(settings: Settings) -> None:
         connection.execute(FAMILY_MEMBERS_SCHEMA)
         connection.execute(VOICE_SESSIONS_SCHEMA)
         connection.execute(VOICE_SESSION_CHUNKS_SCHEMA)
+        connection.execute(DEMO_SESSIONS_SCHEMA)
         _ensure_voice_session_chunk_columns(connection)
         connection.commit()
 

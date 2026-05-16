@@ -11,6 +11,11 @@ env/
 build/
 dist/
 
+# Node / mobile build outputs
+node_modules/
+mobile/node_modules/
+mobile/dist/
+
 # Environment
 .env
 .env.*
